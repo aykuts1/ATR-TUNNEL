@@ -3,12 +3,11 @@ Position manager - in-memory tracking of open positions and exit state.
 
 Stages:
   Stage 0 - just entered, %1 SL on exchange
-  Stage 1 - +%1.2 profit (peak):    SL moves to +%1 profit on entry, no CE yet
-  Stage 2 - +2 ATR profit (peak):   SL moves to +0.2 ATR profit, CE 2 ATR trail starts
-  Stage 3 - +6 ATR profit (peak):   CE narrows to 1 ATR trail, SL untouched
+  Stage 1 - +2 ATR peak profit:  SL moves to +0.5% profit, CE 4 ATR trail starts
+  Stage 2 - +6 ATR peak profit:  SL moves to +0.2 ATR profit, CE narrows to 3 ATR
 
 Stage transitions use extreme_price (peak profit reached), not current price.
-This means a stage stays "achieved" even if price pulls back.
+A stage stays "achieved" even if price pulls back.
 
 CE level is computed from extreme_price and the current trail multiplier.
 CE hit check uses current price.
@@ -19,9 +18,8 @@ from typing import Dict, Optional
 
 # Stage definitions
 STAGE_ENTRY = 0
-STAGE_1_PCT = 1     # +%1.2 reached → SL to +%1
-STAGE_2_ATR = 2     # +2 ATR reached → SL to +0.2 ATR, CE 2 ATR
-STAGE_3_ATR = 3     # +6 ATR reached → CE 1 ATR
+STAGE_1_ATR = 1     # +2 ATR reached → SL +0.5%, CE 4 ATR
+STAGE_2_ATR = 2     # +6 ATR reached → SL +0.2 ATR, CE 3 ATR
 
 
 @dataclass
@@ -77,11 +75,11 @@ class Position:
         Current CE trail multiplier based on stage.
         Returns None if CE is not active.
         """
+        if self.stage == STAGE_1_ATR:
+            return 4.0
         if self.stage == STAGE_2_ATR:
-            return 2.0
-        if self.stage == STAGE_3_ATR:
-            return 1.0
-        return None  # No CE in stages 0 and 1
+            return 3.0
+        return None  # No CE in Stage 0
 
     def compute_ce(self) -> Optional[float]:
         """
