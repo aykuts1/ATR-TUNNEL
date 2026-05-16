@@ -27,9 +27,8 @@ from position_manager import (
     PositionManager,
     Position,
     STAGE_ENTRY,
-    STAGE_1_PCT,
+    STAGE_1_ATR,
     STAGE_2_ATR,
-    STAGE_3_ATR,
 )
 
 
@@ -340,43 +339,37 @@ def exit_scan(client: BybitClient, pm: PositionManager) -> None:
             peak_profit_pct = pos.profit_pct_at(pos.extreme_price)
             peak_profit_atr = pos.profit_atr_at(pos.extreme_price)
 
-            # ----- Stage 0 → 1: +1.2% peak → SL to +1% profit -----
-            if pos.stage == STAGE_ENTRY and peak_profit_pct >= config.STAGE1_TRIGGER_PCT:
+            # ----- Stage 0 → 1: +2 ATR peak → SL +0.5%, CE 4 ATR -----
+            if pos.stage == STAGE_ENTRY and peak_profit_atr >= config.STAGE1_TRIGGER_ATR:
                 new_sl = compute_pct_profit_sl(pos.side, pos.entry_price, config.STAGE1_SL_PCT)
                 try:
                     client.update_stop_loss(symbol, new_sl)
                     pos.current_sl = new_sl
-                    pos.stage = STAGE_1_PCT
-                    tg.send_stage1(symbol, pos.side, price, new_sl, peak_profit_pct)
-                    print(f"[STAGE1] {symbol} sl={new_sl}")
+                    pos.stage = STAGE_1_ATR
+                    pos.ce_level = pos.compute_ce()  # 4 ATR trail from extreme
+                    tg.send_stage1(symbol, pos.side, price, new_sl, pos.ce_level, pos.atr_at_entry)
+                    print(f"[STAGE1] {symbol} sl={new_sl} ce={pos.ce_level}")
                 except Exception as e:
                     print(f"[ERR] Stage1 SL update {symbol}: {e}")
                     tg.send_error(f"Aşama 1 SL güncellenemedi: {symbol}", str(e))
 
-            # ----- Stage 1 → 2: +2 ATR peak → SL to +0.2 ATR, CE 2 ATR -----
-            if pos.stage == STAGE_1_PCT and peak_profit_atr >= config.STAGE2_TRIGGER_ATR:
+            # ----- Stage 1 → 2: +6 ATR peak → SL +0.2 ATR, CE narrows to 3 ATR -----
+            if pos.stage == STAGE_1_ATR and peak_profit_atr >= config.STAGE2_TRIGGER_ATR:
                 new_sl = compute_atr_profit_sl(pos.side, pos.entry_price,
                                                config.STAGE2_SL_ATR, pos.atr_at_entry)
                 try:
                     client.update_stop_loss(symbol, new_sl)
                     pos.current_sl = new_sl
                     pos.stage = STAGE_2_ATR
-                    pos.ce_level = pos.compute_ce()  # 2 ATR trail from extreme
+                    pos.ce_level = pos.compute_ce()  # 3 ATR trail from extreme
                     tg.send_stage2(symbol, pos.side, price, new_sl, pos.ce_level, pos.atr_at_entry)
                     print(f"[STAGE2] {symbol} sl={new_sl} ce={pos.ce_level}")
                 except Exception as e:
                     print(f"[ERR] Stage2 SL update {symbol}: {e}")
                     tg.send_error(f"Aşama 2 SL güncellenemedi: {symbol}", str(e))
 
-            # ----- Stage 2 → 3: +6 ATR peak → CE narrows to 1 ATR -----
-            if pos.stage == STAGE_2_ATR and peak_profit_atr >= config.STAGE3_TRIGGER_ATR:
-                pos.stage = STAGE_3_ATR
-                pos.ce_level = pos.compute_ce()  # 1 ATR trail from extreme
-                tg.send_stage3(symbol, pos.side, price, pos.ce_level, pos.atr_at_entry)
-                print(f"[STAGE3] {symbol} ce={pos.ce_level}")
-
-            # ----- CE recompute (Stage 2 or 3): trail from updated extreme -----
-            if pos.stage >= STAGE_2_ATR:
+            # ----- CE recompute (Stage 1 or 2): trail from updated extreme -----
+            if pos.stage >= STAGE_1_ATR:
                 pos.ce_level = pos.compute_ce()
                 if pos.ce_hit(price):
                     close_position(client, pm, symbol, "Chandelier Exit (CE)")
@@ -517,15 +510,13 @@ def restore_open_positions(client: BybitClient, pm: PositionManager) -> None:
             peak_pct = pos.profit_pct_at(extreme)
             peak_atr = pos.profit_atr_at(extreme)
 
-            if peak_atr >= config.STAGE3_TRIGGER_ATR:
-                pos.stage = STAGE_3_ATR
-            elif peak_atr >= config.STAGE2_TRIGGER_ATR:
+            if peak_atr >= config.STAGE2_TRIGGER_ATR:
                 pos.stage = STAGE_2_ATR
-            elif peak_pct >= config.STAGE1_TRIGGER_PCT:
-                pos.stage = STAGE_1_PCT
+            elif peak_atr >= config.STAGE1_TRIGGER_ATR:
+                pos.stage = STAGE_1_ATR
 
-            # Compute CE if applicable (Stage 2 or 3)
-            if pos.stage >= STAGE_2_ATR:
+            # Compute CE if applicable (Stage 1 or 2)
+            if pos.stage >= STAGE_1_ATR:
                 pos.ce_level = pos.compute_ce()
 
             pm.open(pos)
@@ -533,9 +524,8 @@ def restore_open_positions(client: BybitClient, pm: PositionManager) -> None:
 
             stage_names = {
                 STAGE_ENTRY: "Giriş (SL %1)",
-                STAGE_1_PCT: "Aşama 1 (SL +%1 kâr)",
-                STAGE_2_ATR: "Aşama 2 (CE 2 ATR aktif)",
-                STAGE_3_ATR: "Aşama 3 (CE 1 ATR aktif)",
+                STAGE_1_ATR: "Aşama 1 (CE 4 ATR aktif)",
+                STAGE_2_ATR: "Aşama 2 (CE 3 ATR aktif)",
             }
             stage_text = stage_names.get(pos.stage, "?")
             direction = "LONG" if side == "Buy" else "SHORT"
