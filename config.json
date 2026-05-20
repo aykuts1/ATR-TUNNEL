@@ -1,7 +1,0 @@
-{
-  "ema_period": 100,
-  "atr_period": 14,
-  "inner_multiplier": 2,
-  "outer_multiplier": 3,
-  "timeframe": "15m"
-}
