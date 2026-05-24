@@ -22,7 +22,7 @@ class FetcherThread(threading.Thread):
         self.bybit = bybit
         self.stop_event = stop_event
         self.scan_interval = config["scan"]["interval_seconds"]  # 5 sn (fiyat icin)
-        self.kline_interval = 30  # Kline 30 saniyede bir cekilir
+        self.kline_interval = 60  # Kline 60 saniyede bir cekilir (rate limit icin)
         self.timeframe = config["band"]["timeframe"]
         self.coins = config["coins"]["list"]
         # Ayni hata art arda gelirse spam yapmasin diye basit kontrol
@@ -54,8 +54,8 @@ class FetcherThread(threading.Thread):
                 if fetch_klines:
                     klines = self.bybit.get_klines(coin, self.timeframe, limit=200)
                     state.set_cached_data(coin, klines, price)
-                    # Kline istekleri arasinda kisa bekleme — rate limit asimini onler
-                    time.sleep(0.6)
+                    # Kline istekleri arasinda bekleme — rate limit asimini onler
+                    time.sleep(1.2)
                 else:
                     # Mevcut kline'i koru, sadece fiyati guncelle
                     existing_klines = state.get_cached_klines(coin)
