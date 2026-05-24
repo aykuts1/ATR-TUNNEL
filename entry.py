@@ -21,7 +21,7 @@ from flag import (
 from bybit_client import BybitClient, round_qty, round_price
 from telegram_notifier import (
     notifier, msg_trade_opened, msg_error, msg_insufficient_balance,
-    msg_slot_full, msg_coin_busy,
+    msg_slot_full, msg_direction_changed,
 )
 
 
@@ -160,13 +160,49 @@ class EntryThread(threading.Thread):
 
         # Coinde acik islem var mi?
         existing = state.get_position(coin)
+        direction_changed = False  # Yon degisimi flagi
+        old_close_data = None      # Eski islemin kapanis bilgisi
+        old_position = None        # Bildirim icin eski pozisyon
         if existing:
-            notifier.send(msg_coin_busy(coin, color, side, existing, state.get_open_count(), self.max_slots))
-            return
+            # Ayni yon ise: zaten acik, hicbir sey yapma
+            if existing["color"] == color and existing["side"] == side:
+                return
+            # Farkli yon: eski islemi kapat, yeni islem aciliyor
+            try:
+                self.bybit.close_position(coin, existing["order_side"], existing["qty"])
+            except Exception as e:
+                notifier.send(msg_error(self.name, coin, "Yon Degisimi - Kapatma Hatasi", str(e)))
+                return
 
-        # Bakiye yeterli mi?
+            # Eski pozisyon K/Z hesabi
+            try:
+                exit_price = self.bybit.get_price(coin)
+            except Exception:
+                exit_price = existing["entry_price"]
+            entry = existing["entry_price"]
+            qty_old = existing["qty"]
+            if existing["side"] == "long":
+                gross = (exit_price - entry) * qty_old
+            else:
+                gross = (entry - exit_price) * qty_old
+            commission_old = existing["volume"] * self.config["commission"]["rate"]
+            net = gross - commission_old
+
+            old_close_data = {
+                "exit_time": datetime.now(),
+                "exit_price": exit_price,
+                "exit_type": "YON DEGISIMI",
+                "gross_pnl": gross,
+                "net_pnl": net,
+                "commission": commission_old,
+            }
+            old_position = existing
+            state.remove_position(coin, old_close_data)
+            direction_changed = True
+
+        # Bakiye yeterli mi? (Kullanilabilir bakiye - acik pozisyon marjini dusuldukten sonra)
         try:
-            balance = self.bybit.get_balance()
+            balance = self.bybit.get_available_balance()
         except Exception as e:
             notifier.send(msg_error(self.name, coin, "Bakiye Sorgu Hatasi", str(e)))
             return
@@ -258,4 +294,10 @@ class EntryThread(threading.Thread):
         state.set_flag(coin, flag_name, False)  # giriste flag silinir
         state.flag_to_trade(coin, flag_name)
 
+        # Yon degisimi olduysa once o bildirim, sonra islem acilis bildirimi
+        if direction_changed and old_close_data and old_position:
+            notifier.send(msg_direction_changed(
+                old_position, color, side, old_close_data,
+                state.get_open_count(), self.max_slots
+            ))
         notifier.send(msg_trade_opened(position, state.get_open_count(), self.max_slots))
