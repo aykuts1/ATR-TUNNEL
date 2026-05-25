@@ -107,6 +107,9 @@ class ExitThread(threading.Thread):
         coin = pos["coin"]
         side = pos["side"]
         level = pos["level"]
+        # Komisyon tutari fiyat farkina cevirildi (USDT cinsinden komisyon / qty)
+        commission_usdt = pos["volume"] * self.commission_rate
+        commission_in_price = commission_usdt / pos["qty"] if pos["qty"] > 0 else 0
 
         if side == "long":
             # Seviye gecisleri
@@ -116,20 +119,31 @@ class ExitThread(threading.Thread):
                 level = new_level
 
             # Cikis kosullari
-            if level in ("ENTRY", "BE"):
+            if level == "ENTRY":
                 # Kirmizi Ust Ic Tampon altina duserse
                 if price < bands["kirmizi_ust_ictampon"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                    self.close_position(pos, price, "ENTRY EXIT")
                     return
-            elif level in ("CE1", "CE2"):
-                # Chandelier veya Kirmizi Ust Dis Cizgi altina duserse
+            elif level == "BE":
+                # Kirmizi Ust Dis Cizgi + komisyon altina duserse
+                be_line = bands["kirmizi_ust_disticizgi"] + commission_in_price
+                if price < be_line:
+                    self.close_position(pos, price, "BE EXIT")
+                    return
+            elif level == "CE1":
+                # Kirmizi Ust Dis Tampon altina duserse (Chandelier YOK)
+                if price < bands["kirmizi_ust_distampon"]:
+                    self.close_position(pos, price, "CE1 EXIT")
+                    return
+            elif level == "CE2":
+                # Chandelier VEYA Kirmizi Ust Dis Tampon altina duserse
                 if pos.get("chandelier_start_price") is not None:
                     chandelier = pos["highest_price"] - self.chandelier_mult * pos["atr_at_entry"]
                     if price < chandelier:
                         self.close_position(pos, price, "CHANDELIER EXIT")
                         return
-                if price < bands["kirmizi_ust_disticizgi"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                if price < bands["kirmizi_ust_distampon"]:
+                    self.close_position(pos, price, "CE2 EXIT")
                     return
 
         else:  # short
@@ -138,18 +152,30 @@ class ExitThread(threading.Thread):
                 self.upgrade_level(pos, level, new_level, price, bands)
                 level = new_level
 
-            if level in ("ENTRY", "BE"):
+            if level == "ENTRY":
                 if price > bands["kirmizi_alt_ictampon"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                    self.close_position(pos, price, "ENTRY EXIT")
                     return
-            elif level in ("CE1", "CE2"):
+            elif level == "BE":
+                # Kirmizi Alt Dis Cizgi - komisyon ustune cikarsa
+                be_line = bands["kirmizi_alt_disticizgi"] - commission_in_price
+                if price > be_line:
+                    self.close_position(pos, price, "BE EXIT")
+                    return
+            elif level == "CE1":
+                # Kirmizi Alt Dis Tampon ustune cikarsa (Chandelier YOK)
+                if price > bands["kirmizi_alt_distampon"]:
+                    self.close_position(pos, price, "CE1 EXIT")
+                    return
+            elif level == "CE2":
+                # Chandelier VEYA Kirmizi Alt Dis Tampon ustune cikarsa
                 if pos.get("chandelier_start_price") is not None:
                     chandelier = pos["lowest_price"] + self.chandelier_mult * pos["atr_at_entry"]
                     if price > chandelier:
                         self.close_position(pos, price, "CHANDELIER EXIT")
                         return
-                if price > bands["kirmizi_alt_disticizgi"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                if price > bands["kirmizi_alt_distampon"]:
+                    self.close_position(pos, price, "CE2 EXIT")
                     return
 
     def check_kirmizi_long_level(self, price: float, bands: dict, current: str) -> str:
@@ -183,6 +209,9 @@ class ExitThread(threading.Thread):
         coin = pos["coin"]
         side = pos["side"]
         level = pos["level"]
+        # Komisyon tutari fiyat farkina cevirildi
+        commission_usdt = pos["volume"] * self.commission_rate
+        commission_in_price = commission_usdt / pos["qty"] if pos["qty"] > 0 else 0
 
         if side == "long":
             # Winrate cikis kontrolu (her seviyede gecerli)
@@ -196,21 +225,30 @@ class ExitThread(threading.Thread):
                 level = new_level
 
             if level == "ENTRY":
+                # Mavi Alt Dis Tampon altina duserse
                 if price < bands["mavi_alt_distampon"]:
                     self.close_position(pos, price, "ENTRY EXIT")
                     return
             elif level == "BE":
-                if price < bands["mavi_alt_distampon"]:
+                # Mavi Alt Dis Cizgi + komisyon altina duserse
+                be_line = bands["mavi_alt_disticizgi"] + commission_in_price
+                if price < be_line:
                     self.close_position(pos, price, "BE EXIT")
                     return
-            elif level in ("CE1", "CE2"):
+            elif level == "CE1":
+                # Mavi Alt Ic Tampon altina duserse (Chandelier YOK)
+                if price < bands["mavi_alt_ictampon"]:
+                    self.close_position(pos, price, "CE1 EXIT")
+                    return
+            elif level == "CE2":
+                # Chandelier VEYA Mavi Alt Ic Tampon altina duserse
                 if pos.get("chandelier_start_price") is not None:
                     chandelier = pos["highest_price"] - self.chandelier_mult * pos["atr_at_entry"]
                     if price < chandelier:
                         self.close_position(pos, price, "CHANDELIER EXIT")
                         return
-                if price < bands["mavi_alt_disticizgi"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                if price < bands["mavi_alt_ictampon"]:
+                    self.close_position(pos, price, "CE2 EXIT")
                     return
 
         else:  # short
@@ -225,21 +263,30 @@ class ExitThread(threading.Thread):
                 level = new_level
 
             if level == "ENTRY":
+                # Mavi Ust Dis Tampon ustune cikarsa
                 if price > bands["mavi_ust_distampon"]:
                     self.close_position(pos, price, "ENTRY EXIT")
                     return
             elif level == "BE":
-                if price > bands["mavi_ust_distampon"]:
+                # Mavi Ust Dis Cizgi - komisyon ustune cikarsa
+                be_line = bands["mavi_ust_disticizgi"] - commission_in_price
+                if price > be_line:
                     self.close_position(pos, price, "BE EXIT")
                     return
-            elif level in ("CE1", "CE2"):
+            elif level == "CE1":
+                # Mavi Ust Ic Tampon ustune cikarsa (Chandelier YOK)
+                if price > bands["mavi_ust_ictampon"]:
+                    self.close_position(pos, price, "CE1 EXIT")
+                    return
+            elif level == "CE2":
+                # Chandelier VEYA Mavi Ust Ic Tampon ustune cikarsa
                 if pos.get("chandelier_start_price") is not None:
                     chandelier = pos["lowest_price"] + self.chandelier_mult * pos["atr_at_entry"]
                     if price > chandelier:
                         self.close_position(pos, price, "CHANDELIER EXIT")
                         return
-                if price > bands["mavi_ust_disticizgi"]:
-                    self.close_position(pos, price, f"{level} EXIT")
+                if price > bands["mavi_ust_ictampon"]:
+                    self.close_position(pos, price, "CE2 EXIT")
                     return
 
     def check_mavi_long_level(self, price: float, bands: dict, current: str) -> str:
@@ -274,8 +321,8 @@ class ExitThread(threading.Thread):
         """Seviye yukseltme — istatistik, chandelier baslangici, bildirim."""
         updates = {"level": new_level}
 
-        # CE1 veya CE2 gecisinde chandelier baslar/yenilenir
-        if new_level in ("CE1", "CE2"):
+        # CE2 gecisinde chandelier baslar (CE1'de chandelier YOK artik)
+        if new_level == "CE2":
             updates["chandelier_start_price"] = price
             # Highest/lowest'i sifirla — chandelier o andaki fiyattan basliyor
             updates["highest_price"] = price
