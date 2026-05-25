@@ -3,7 +3,7 @@
     "_aciklama": "Bant cizgilerinin hesaplanma ayarlari",
     "ema_period": 100,
     "atr_period": 100,
-    "timeframe": "5m",
+    "timeframe": "30m",
     "red_outer_multiplier": 2.0,
     "blue_outer_multiplier": 1.9,
     "outer_buffer_multiplier": 0.5,
