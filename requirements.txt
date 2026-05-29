@@ -1,5 +1,5 @@
-pybit==5.7.0
-python-telegram-bot==20.7
-numpy==1.26.4
-pandas==2.2.0
-pytz==2024.1
+pybit>=5.0.0
+python-telegram-bot>=20.0
+numpy>=1.24.0
+pandas>=2.1.0
+pytz>=2023.3
