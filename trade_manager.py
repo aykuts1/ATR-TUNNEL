@@ -61,6 +61,10 @@ class Trade:
         # SARI yeniden giriş çizgisi (chandelier sonrası hafıza)
         self.reentry_line = None
 
+        # MAVİ dinamik çıkış çizgisi alanları (sadece BLUE thread için)
+        self.exit_line = None              # Şu anki çıkış çizgisi (fiyat cinsi)
+        self.exit_line_updated = False     # %0.2 eşiğine ulaşıldı mı? (bir kez güncelleme kilidi)
+
         # Ek bilgiler (parent_red_id vs)
         self.extras = {}
 
